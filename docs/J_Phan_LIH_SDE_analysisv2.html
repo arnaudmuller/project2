@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+<meta name="author" content="Arnaud Muller" />
+
+
+<title>RNA-Seq significance analysis</title>
+
+<script src="site_libs/header-attrs-2.13/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/cosmo.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/jqueryui-1.11.4/jquery-ui.min.js"></script>
+<link href="site_libs/tocify-1.9.1/jquery.tocify.css" rel="stylesheet" />
+<script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<link href="site_libs/highlightjs-9.12.0/textmate.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+<script src="site_libs/htmlwidgets-1.5.4/htmlwidgets.js"></script>
+<link href="site_libs/datatables-css-0.0.0/datatables-crosstalk.css" rel="stylesheet" />
+<script src="site_libs/datatables-binding-0.22/datatables.js"></script>
+<link href="site_libs/dt-core-1.11.3/css/jquery.dataTables.min.css" rel="stylesheet" />
+<link href="site_libs/dt-core-1.11.3/css/jquery.dataTables.extra.css" rel="stylesheet" />
+<script src="site_libs/dt-core-1.11.3/js/jquery.dataTables.min.js"></script>
+<script src="site_libs/jszip-1.11.3/jszip.min.js"></script>
+<script src="site_libs/pdfmake-1.11.3/pdfmake.js"></script>
+<script src="site_libs/pdfmake-1.11.3/vfs_fonts.js"></script>
+<link href="site_libs/dt-ext-buttons-1.11.3/css/buttons.dataTables.min.css" rel="stylesheet" />
+<script src="site_libs/dt-ext-buttons-1.11.3/js/dataTables.buttons.min.js"></script>
+<script src="site_libs/dt-ext-buttons-1.11.3/js/buttons.html5.min.js"></script>
+<script src="site_libs/dt-ext-buttons-1.11.3/js/buttons.colVis.min.js"></script>
+<script src="site_libs/dt-ext-buttons-1.11.3/js/buttons.print.min.js"></script>
+<link href="site_libs/crosstalk-1.2.0/css/crosstalk.min.css" rel="stylesheet" />
+<script src="site_libs/crosstalk-1.2.0/js/crosstalk.min.js"></script>
+
+<link rel="icon" href="https://github.com/workflowr/workflowr-assets/raw/main/img/reproducible.png">
+<!-- Add a small amount of space between sections. -->
+<style type="text/css">
+div.section {
+  padding-top: 12px;
+}
+</style>
+
+
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+details > summary > p:only-child {
+  display: inline;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark it active
+  menuAnchor.tab('show');
+
+  // if it's got a parent navbar menu mark it active as well
+  menuAnchor.closest('li.dropdown').addClass('active');
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before {
+  content: "";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "&#xe258;";
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+
+
+
+<style type="text/css">
+
+#TOC {
+  margin: 25px 0px 20px 0px;
+}
+@media (max-width: 768px) {
+#TOC {
+  position: relative;
+  width: 100%;
+}
+}
+
+@media print {
+.toc-content {
+  /* see https://github.com/w3c/csswg-drafts/issues/4434 */
+  float: right;
+}
+}
+
+.toc-content {
+  padding-left: 30px;
+  padding-right: 40px;
+}
+
+div.main-container {
+  max-width: 1200px;
+}
+
+div.tocify {
+  width: 20%;
+  max-width: 260px;
+  max-height: 85%;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  div.tocify {
+    width: 25%;
+  }
+}
+
+@media (max-width: 767px) {
+  div.tocify {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.tocify ul, .tocify li {
+  line-height: 20px;
+}
+
+.tocify-subheader .tocify-item {
+  font-size: 0.90em;
+}
+
+.tocify .list-group-item {
+  border-radius: 0px;
+}
+
+
+</style>
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+<!-- setup 3col/9col grid for toc_float and main content  -->
+<div class="row">
+<div class="col-xs-12 col-sm-4 col-md-3">
+<div id="TOC" class="tocify">
+</div>
+</div>
+
+<div class="toc-content col-xs-12 col-sm-8 col-md-9">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-bs-toggle="collapse" data-target="#navbar" data-bs-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">myproject2</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="about.html">About</a>
+</li>
+<li>
+  <a href="license.html">License</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+
+
+<h1 class="title toc-ignore">RNA-Seq significance analysis</h1>
+<h3 class="subtitle">220221_A01275_0052_AHT7L3DRXY</h3>
+<h4 class="author">Arnaud Muller</h4>
+<h4 class="date">22 avril 2022</h4>
+
+</div>
+
+
+<p>
+<button type="button" class="btn btn-default btn-workflowr btn-workflowr-report" data-toggle="collapse" data-target="#workflowr-report">
+<span class="glyphicon glyphicon-list" aria-hidden="true"></span> workflowr <span class="glyphicon glyphicon-exclamation-sign text-danger" aria-hidden="true"></span>
+</button>
+</p>
+<div id="workflowr-report" class="collapse">
+<ul class="nav nav-tabs">
+<li class="active">
+<a data-toggle="tab" href="#summary">Summary</a>
+</li>
+<li>
+<a data-toggle="tab" href="#checks"> Checks <span class="glyphicon glyphicon-exclamation-sign text-danger" aria-hidden="true"></span> </a>
+</li>
+<li>
+<a data-toggle="tab" href="#versions">Past versions</a>
+</li>
+</ul>
+<div class="tab-content">
+<div id="summary" class="tab-pane fade in active">
+<p>
+<strong>Last updated:</strong> 2022-04-22
+</p>
+<p>
+<strong>Checks:</strong> <span class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> 6 <span class="glyphicon glyphicon-exclamation-sign text-danger" aria-hidden="true"></span> 1
+</p>
+<p>
+<strong>Knit directory:</strong> <code>myproject2/</code> <span class="glyphicon glyphicon-question-sign" aria-hidden="true" title="This is the local directory in which the code in this file was executed."> </span>
+</p>
+<p>
+This reproducible <a href="https://rmarkdown.rstudio.com">R Markdown</a> analysis was created with <a
+  href="https://github.com/workflowr/workflowr">workflowr</a> (version 1.7.0). The <em>Checks</em> tab describes the reproducibility checks that were applied when the results were created. The <em>Past versions</em> tab lists the development history.
+</p>
+<hr>
+</div>
+<div id="checks" class="tab-pane fade">
+<div id="workflowr-checks" class="panel-group">
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRMarkdownfilestronguptodate"> <span class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> <strong>R Markdown file:</strong> up-to-date </a>
+</p>
+</div>
+<div id="strongRMarkdownfilestronguptodate" class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great! Since the R Markdown file has been committed to the Git repository, you know the exact version of the code that produced these results.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongEnvironmentstrongempty"> <span class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> <strong>Environment:</strong> empty </a>
+</p>
+</div>
+<div id="strongEnvironmentstrongempty" class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great job! The global environment was empty. Objects defined in the global environment can affect the analysis in your R Markdown file in unknown ways. For reproduciblity it’s best to always run the code in an empty environment.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongSeedstrongcodesetseed20220421code"> <span class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> <strong>Seed:</strong> <code>set.seed(20220421)</code> </a>
+</p>
+</div>
+<div id="strongSeedstrongcodesetseed20220421code" class="panel-collapse collapse">
+<div class="panel-body">
+<p>The command <code>set.seed(20220421)</code> was run prior to running the code in the R Markdown file. Setting a seed ensures that any results that rely on randomness, e.g. subsampling or permutations, are reproducible.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongSessioninformationstrongrecorded"> <span class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> <strong>Session information:</strong> recorded </a>
+</p>
+</div>
+<div id="strongSessioninformationstrongrecorded" class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great job! Recording the operating system, R version, and package versions is critical for reproducibility.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongCachestrongdetected"> <span class="glyphicon glyphicon-exclamation-sign text-danger" aria-hidden="true"></span> <strong>Cache:</strong> detected </a>
+</p>
+</div>
+<div id="strongCachestrongdetected" class="panel-collapse collapse">
+<div class="panel-body">
+The following chunks had caches available:
+<ul>
+<li>
+advancedmodel
+</li>
+<li>
+export
+</li>
+<li>
+heatmap
+</li>
+<li>
+import
+</li>
+<li>
+loadlib
+</li>
+<li>
+mart
+</li>
+<li>
+pca
+</li>
+<li>
+plotresults
+</li>
+<li>
+sanitary
+</li>
+<li>
+session-info-chunk-inserted-by-workflowr
+</li>
+<li>
+sessioninfo
+</li>
+<li>
+uberbasicmodel
+</li>
+</ul>
+<p>To ensure reproducibility of the results, delete the cache directory <code>J_Phan_LIH_SDE_analysisv2_cache</code> and re-run the analysis. To have workflowr automatically delete the cache directory prior to building the file, set <code>delete_cache = TRUE</code> when running <code>wflow_build()</code> or <code>wflow_publish()</code>.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongFilepathsstrongrelative"> <span class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> <strong>File paths:</strong> relative </a>
+</p>
+</div>
+<div id="strongFilepathsstrongrelative" class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great job! Using relative paths to the files within your workflowr project makes it easier to run your code on other machines.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRepositoryversionstrongdce7462"> <span class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> <strong>Repository version:</strong> dce7462 </a>
+</p>
+</div>
+<div id="strongRepositoryversionstrongdce7462" class="panel-collapse collapse">
+<div class="panel-body">
+<p>
+Great! You are using Git for version control. Tracking code development and connecting the code version to the results is critical for reproducibility.
+</p>
+<p>
+The results in this page were generated with repository version dce7462. See the <em>Past versions</em> tab to see a history of the changes made to the R Markdown and HTML files.
+</p>
+<p>
+Note that you need to be careful to ensure that all relevant files for the analysis have been committed to Git prior to generating the results (you can use <code>wflow_publish</code> or <code>wflow_git_commit</code>). workflowr only checks the R Markdown file, but you know if there are other scripts or data files that it depends on. Below is the status of the Git repository when the results were generated:
+</p>
+<pre><code>
+Ignored files:
+    Ignored:    analysis/J_Phan_LIH_SDE_analysisv2_cache/
+
+Untracked files:
+    Untracked:  all.tsv
+    Untracked:  sampleannotation.tsv
+
+</code></pre>
+<p>
+Note that any generated files, e.g. HTML, png, CSS, etc., are not included in this status report because it is ok for generated content to have uncommitted changes.
+</p>
+</div>
+</div>
+</div>
+</div>
+<hr>
+</div>
+<div id="versions" class="tab-pane fade">
+<p>
+There are no past versions. Publish this analysis with <code>wflow_publish()</code> to start tracking its development.
+</p>
+<hr>
+</div>
+</div>
+</div>
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+<div id="file-import" class="section level1">
+<h1>File import</h1>
+<p>Initial data import stands in the following files:</p>
+<ul>
+<li><strong>all.tsv</strong>: raw counts</li>
+<li><strong>sampleannotation.tsv</strong>: metadata describing each sample, as seen below.</li>
+</ul>
+<div id="htmlwidget-f8cf1f7462f917222b05" style="width:100%;height:auto;" class="datatables html-widget"></div>
+<script type="application/json" data-for="htmlwidget-f8cf1f7462f917222b05">{"x":{"filter":"none","vertical":false,"extensions":["Buttons"],"caption":"<caption>Sample annotation<\/caption>","data":[["PA17-30_S9","PA18-30_S43","PA19-30_S23","PA20-30_S34","PA21-30_S42","PA12-60_S18","PA14-60_S14","PA15-60_S48","PA16-60_S54","PA17-60_S25","PA10-90_S47","PA11-90_S59","PA12-90_S57","PA13-90_S58","PA9-90_S7","PB17-30_S21","PB18-30_S29","PB19-30_S30","PB20-30_S16","PB21-30_S24","PB12-60_S52","PB14-60_S12","PB15-60_S26","PB16-60_S22","PB17-60_S3","PB10-90_S13","PB11-90_S20","PB12-90_S41","PB13-90_S6","PB9-90_S11","WTA17-30_S36","WTA18-30_S5","WTA19-30_S38","WTA20-30_S53","WTA21-30_S15","WTA12-60_S27","WTA14-60_S55","WTA15-60_S19","WTA16-60_S44","WTA17-60_S50","WTA10-90_S46","WTA11-90_S35","WTA12-90_S2","WTA13-90_S45","WTA9-90_S60","WTB17-30_S39","WTB18-30_S51","WTB19-30_S49","WTB20-30_S33","WTB21-30_S10","WTB12-60_S37","WTB14-60_S8","WTB15-60_S32","WTB16-60_S1","WTB17-60_S4","WTB10-90_S17","WTB11-90_S40","WTB12-90_S56","WTB13-90_S31","WTB9-90_S28"],["PA","PA","PA","PA","PA","PA","PA","PA","PA","PA","PA","PA","PA","PA","PA","PB","PB","PB","PB","PB","PB","PB","PB","PB","PB","PB","PB","PB","PB","PB","WTA","WTA","WTA","WTA","WTA","WTA","WTA","WTA","WTA","WTA","WTA","WTA","WTA","WTA","WTA","WTB","WTB","WTB","WTB","WTB","WTB","WTB","WTB","WTB","WTB","WTB","WTB","WTB","WTB","WTB"],[30,30,30,30,30,60,60,60,60,60,90,90,90,90,90,30,30,30,30,30,60,60,60,60,60,90,90,90,90,90,30,30,30,30,30,60,60,60,60,60,90,90,90,90,90,30,30,30,30,30,60,60,60,60,60,90,90,90,90,90],["A","A","A","A","A","A","A","A","A","A","A","A","A","A","A","B","B","B","B","B","B","B","B","B","B","B","B","B","B","B","A","A","A","A","A","A","A","A","A","A","A","A","A","A","A","B","B","B","B","B","B","B","B","B","B","B","B","B","B","B"],["M","M","M","M","M","M","M","M","M","M","M","M","M","M","M","F","F","F","F","F","F","F","F","F","F","F","F","F","F","F","M","M","M","M","M","M","M","M","M","M","M","M","M","M","M","F","F","F","F","F","F","F","F","F","F","F","F","F","F","F"],[75,75,75,75,75,75,75,75,75,75,75,75,75,75,75,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,75,75,75,75,75,75,75,75,75,75,75,75,75,75,75,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45],[1,2,3,4,5,1,2,3,4,5,1,2,3,4,5,1,2,3,4,5,1,2,3,4,5,1,2,3,4,5,1,2,3,4,5,1,2,3,4,5,1,2,3,4,5,1,2,3,4,5,1,2,3,4,5,1,2,3,4,5],["late","late","late","late","late","late","late","late","late","late","late","late","late","late","late","early","early","early","early","early","early","early","early","early","early","early","early","early","early","early","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control"]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th>sample<\/th>\n      <th>condition<\/th>\n      <th>time<\/th>\n      <th>patient<\/th>\n      <th>gender<\/th>\n      <th>sampling age<\/th>\n      <th>replicate<\/th>\n      <th>diagnostic<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"dom":"Bfrtip","buttons":[["colvis"],"copy",{"extend":"collection","buttons":["excel","csv","pdf"],"text":"Download"}],"autoWidth":false,"columnDefs":[{"className":"dt-right","targets":[2,5,6]}],"order":[],"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+</div>
+<div id="distributions" class="section level1">
+<h1>Distributions</h1>
+<img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/sanitary-1.png" width="1536" style="display: block; margin: auto;" /><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/sanitary-2.png" width="1536" style="display: block; margin: auto;" /><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/sanitary-3.png" width="1536" style="display: block; margin: auto;" />
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+</div>
+<div id="clustering" class="section level1">
+<h1>Clustering</h1>
+<img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/heatmap-1.png" width="1536" style="display: block; margin: auto;" />
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+<img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/pca-1.png" width="1536" style="display: block; margin: auto;" /><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/pca-2.png" width="1536" style="display: block; margin: auto;" /><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/pca-3.png" width="1536" style="display: block; margin: auto;" />
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+</div>
+<div id="results" class="section level1">
+<h1>Results</h1>
+<p>For each comparison, you can find the box plot of top20 significant genes and a volcano plot.<br />
+A table with <em>fold-change</em> and <em>adjusted pValue</em> is as well available for each comparison. The comparisons of interest are the folowing:</p>
+<pre><code># A tibble: 12 x 2
+   group1 group2
+   &lt;chr&gt;  &lt;chr&gt; 
+ 1 PA_30  PB_30 
+ 2 PA_60  PB_60 
+ 3 PA_90  PB_90 
+ 4 PA_30  WTA_30
+ 5 PA_60  WTA_60
+ 6 PA_90  WTA_90
+ 7 PB_30  WTB_30
+ 8 PB_60  WTB_60
+ 9 PB_90  WTB_90
+10 WTA_30 WTB_30
+11 WTA_60 WTB_60
+12 WTA_90 WTB_90</code></pre>
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+<pre><code>[[1]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-1.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[2]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-2.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[3]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-3.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[4]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-4.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[5]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-5.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[6]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-6.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[7]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-7.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[8]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-8.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[9]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-9.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[10]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-10.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[11]]</code></pre>
+<p><img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-11.png" width="1536" style="display: block; margin: auto;" /></p>
+<pre><code>
+[[12]]</code></pre>
+<img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/plotresults-12.png" width="1536" style="display: block; margin: auto;" />
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+<p>The number od significant genes (adjPval &lt; 0.01) per comparison is the following:</p>
+<pre><code># A tibble: 12 x 2
+   group1_group2     n
+   &lt;chr&gt;         &lt;int&gt;
+ 1 PA_30_PB_30    2248
+ 2 PA_30_WTA_30   1182
+ 3 PA_60_PB_60    6518
+ 4 PA_60_WTA_60   2160
+ 5 PA_90_PB_90    5503
+ 6 PA_90_WTA_90   2632
+ 7 PB_30_WTB_30    731
+ 8 PB_60_WTB_60   5275
+ 9 PB_90_WTB_90   5025
+10 WTA_30_WTB_30   127
+11 WTA_60_WTB_60    10
+12 WTA_90_WTB_90   179</code></pre>
+<img src="figure/J_Phan_LIH_SDE_analysisv2.Rmd/export-1.png" width="1536" style="display: block; margin: auto;" />
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+</div>
+<div id="session-info" class="section level1">
+<h1>Session info</h1>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 4.1.0 (2021-05-18)
+Platform: x86_64-w64-mingw32/x64 (64-bit)
+Running under: Windows 10 x64 (build 18363)
+
+Matrix products: default
+
+locale:
+[1] LC_COLLATE=French_Luxembourg.1252  LC_CTYPE=French_Luxembourg.1252   
+[3] LC_MONETARY=French_Luxembourg.1252 LC_NUMERIC=C                      
+[5] LC_TIME=French_Luxembourg.1252    
+
+attached base packages:
+[1] parallel  stats4    stats     graphics  grDevices utils     datasets 
+[8] methods   base     
+
+other attached packages:
+ [1] UpSetR_1.4.0                cowplot_1.1.1              
+ [3] ggforce_0.3.3               DT_0.22                    
+ [5] biomaRt_2.48.3              ggrepel_0.9.1              
+ [7] viridis_0.6.2               viridisLite_0.4.0          
+ [9] reshape2_1.4.4              FactoMineR_2.4             
+[11] RColorBrewer_1.1-3          pheatmap_1.0.12            
+[13] DESeq2_1.32.0               SummarizedExperiment_1.22.0
+[15] Biobase_2.52.0              MatrixGenerics_1.4.3       
+[17] matrixStats_0.62.0          GenomicRanges_1.44.0       
+[19] GenomeInfoDb_1.28.4         IRanges_2.26.0             
+[21] S4Vectors_0.30.2            BiocGenerics_0.38.0        
+[23] forcats_0.5.1               stringr_1.4.0              
+[25] dplyr_1.0.8                 purrr_0.3.4                
+[27] readr_2.1.2                 tidyr_1.2.0                
+[29] tibble_3.1.6                ggplot2_3.3.5              
+[31] tidyverse_1.3.1             workflowr_1.7.0            
+
+loaded via a namespace (and not attached):
+  [1] readxl_1.4.0           backports_1.4.1        BiocFileCache_2.0.0   
+  [4] plyr_1.8.7             splines_4.1.0          crosstalk_1.2.0       
+  [7] BiocParallel_1.26.2    digest_0.6.29          htmltools_0.5.2       
+ [10] fansi_1.0.3            magrittr_2.0.3         memoise_2.0.1         
+ [13] cluster_2.1.3          tzdb_0.3.0             Biostrings_2.60.2     
+ [16] annotate_1.70.0        modelr_0.1.8           vroom_1.5.7           
+ [19] prettyunits_1.1.1      colorspace_2.0-3       blob_1.2.3            
+ [22] rvest_1.0.2            rappdirs_0.3.3         haven_2.5.0           
+ [25] xfun_0.30              callr_3.7.0            crayon_1.5.1          
+ [28] RCurl_1.98-1.6         jsonlite_1.8.0         genefilter_1.74.1     
+ [31] survival_3.3-1         glue_1.6.2             polyclip_1.10-0       
+ [34] gtable_0.3.0           zlibbioc_1.38.0        XVector_0.32.0        
+ [37] DelayedArray_0.18.0    scales_1.2.0           DBI_1.1.2             
+ [40] Rcpp_1.0.8.3           xtable_1.8-4           progress_1.2.2        
+ [43] flashClust_1.01-2      bit_4.0.4              htmlwidgets_1.5.4     
+ [46] httr_1.4.2             ellipsis_0.3.2         farver_2.1.0          
+ [49] pkgconfig_2.0.3        XML_3.99-0.9           sass_0.4.1            
+ [52] dbplyr_2.1.1           locfit_1.5-9.5         utf8_1.2.2            
+ [55] labeling_0.4.2         tidyselect_1.1.2       rlang_1.0.2           
+ [58] later_1.3.0            AnnotationDbi_1.54.1   munsell_0.5.0         
+ [61] cellranger_1.1.0       tools_4.1.0            cachem_1.0.6          
+ [64] cli_3.2.0              generics_0.1.2         RSQLite_2.2.12        
+ [67] broom_0.8.0            evaluate_0.15          fastmap_1.1.0         
+ [70] yaml_2.3.5             processx_3.5.3         knitr_1.38            
+ [73] bit64_4.0.5            fs_1.5.2               KEGGREST_1.32.0       
+ [76] whisker_0.4            leaps_3.1              xml2_1.3.3            
+ [79] compiler_4.1.0         rstudioapi_0.13        filelock_1.0.2        
+ [82] curl_4.3.2             png_0.1-7              reprex_2.0.1          
+ [85] tweenr_1.0.2           geneplotter_1.70.0     bslib_0.3.1           
+ [88] stringi_1.7.6          highr_0.9              ps_1.6.0              
+ [91] lattice_0.20-45        Matrix_1.4-1           vctrs_0.4.1           
+ [94] pillar_1.7.0           lifecycle_1.0.1        jquerylib_0.1.4       
+ [97] bitops_1.0-7           httpuv_1.6.5           R6_2.5.1              
+[100] promises_1.2.0.1       gridExtra_2.3          codetools_0.2-18      
+[103] MASS_7.3-56            assertthat_0.2.1       rprojroot_2.0.3       
+[106] withr_2.5.0            GenomeInfoDbData_1.2.6 hms_1.1.1             
+[109] grid_4.1.0             rmarkdown_2.13         git2r_0.30.1          
+[112] getPass_0.2-2          scatterplot3d_0.3-41   lubridate_1.8.0       </code></pre>
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+<br>
+<p>
+<button type="button" class="btn btn-default btn-workflowr btn-workflowr-sessioninfo" data-toggle="collapse" data-target="#workflowr-sessioninfo" style="display: block;">
+<span class="glyphicon glyphicon-wrench" aria-hidden="true"></span> Session information
+</button>
+</p>
+<div id="workflowr-sessioninfo" class="collapse">
+<pre><code>R version 4.1.0 (2021-05-18)
+Platform: x86_64-w64-mingw32/x64 (64-bit)
+Running under: Windows 10 x64 (build 18363)
+
+Matrix products: default
+
+locale:
+[1] LC_COLLATE=French_Luxembourg.1252  LC_CTYPE=French_Luxembourg.1252   
+[3] LC_MONETARY=French_Luxembourg.1252 LC_NUMERIC=C                      
+[5] LC_TIME=French_Luxembourg.1252    
+
+attached base packages:
+[1] parallel  stats4    stats     graphics  grDevices utils     datasets 
+[8] methods   base     
+
+other attached packages:
+ [1] UpSetR_1.4.0                cowplot_1.1.1              
+ [3] ggforce_0.3.3               DT_0.22                    
+ [5] biomaRt_2.48.3              ggrepel_0.9.1              
+ [7] viridis_0.6.2               viridisLite_0.4.0          
+ [9] reshape2_1.4.4              FactoMineR_2.4             
+[11] RColorBrewer_1.1-3          pheatmap_1.0.12            
+[13] DESeq2_1.32.0               SummarizedExperiment_1.22.0
+[15] Biobase_2.52.0              MatrixGenerics_1.4.3       
+[17] matrixStats_0.62.0          GenomicRanges_1.44.0       
+[19] GenomeInfoDb_1.28.4         IRanges_2.26.0             
+[21] S4Vectors_0.30.2            BiocGenerics_0.38.0        
+[23] forcats_0.5.1               stringr_1.4.0              
+[25] dplyr_1.0.8                 purrr_0.3.4                
+[27] readr_2.1.2                 tidyr_1.2.0                
+[29] tibble_3.1.6                ggplot2_3.3.5              
+[31] tidyverse_1.3.1             workflowr_1.7.0            
+
+loaded via a namespace (and not attached):
+  [1] readxl_1.4.0           backports_1.4.1        BiocFileCache_2.0.0   
+  [4] plyr_1.8.7             splines_4.1.0          crosstalk_1.2.0       
+  [7] BiocParallel_1.26.2    digest_0.6.29          htmltools_0.5.2       
+ [10] fansi_1.0.3            magrittr_2.0.3         memoise_2.0.1         
+ [13] cluster_2.1.3          tzdb_0.3.0             Biostrings_2.60.2     
+ [16] annotate_1.70.0        modelr_0.1.8           vroom_1.5.7           
+ [19] prettyunits_1.1.1      colorspace_2.0-3       blob_1.2.3            
+ [22] rvest_1.0.2            rappdirs_0.3.3         haven_2.5.0           
+ [25] xfun_0.30              callr_3.7.0            crayon_1.5.1          
+ [28] RCurl_1.98-1.6         jsonlite_1.8.0         genefilter_1.74.1     
+ [31] survival_3.3-1         glue_1.6.2             polyclip_1.10-0       
+ [34] gtable_0.3.0           zlibbioc_1.38.0        XVector_0.32.0        
+ [37] DelayedArray_0.18.0    scales_1.2.0           DBI_1.1.2             
+ [40] Rcpp_1.0.8.3           xtable_1.8-4           progress_1.2.2        
+ [43] flashClust_1.01-2      bit_4.0.4              htmlwidgets_1.5.4     
+ [46] httr_1.4.2             ellipsis_0.3.2         farver_2.1.0          
+ [49] pkgconfig_2.0.3        XML_3.99-0.9           sass_0.4.1            
+ [52] dbplyr_2.1.1           locfit_1.5-9.5         utf8_1.2.2            
+ [55] labeling_0.4.2         tidyselect_1.1.2       rlang_1.0.2           
+ [58] later_1.3.0            AnnotationDbi_1.54.1   munsell_0.5.0         
+ [61] cellranger_1.1.0       tools_4.1.0            cachem_1.0.6          
+ [64] cli_3.2.0              generics_0.1.2         RSQLite_2.2.12        
+ [67] broom_0.8.0            evaluate_0.15          fastmap_1.1.0         
+ [70] yaml_2.3.5             processx_3.5.3         knitr_1.38            
+ [73] bit64_4.0.5            fs_1.5.2               KEGGREST_1.32.0       
+ [76] whisker_0.4            leaps_3.1              xml2_1.3.3            
+ [79] compiler_4.1.0         rstudioapi_0.13        filelock_1.0.2        
+ [82] curl_4.3.2             png_0.1-7              reprex_2.0.1          
+ [85] tweenr_1.0.2           geneplotter_1.70.0     bslib_0.3.1           
+ [88] stringi_1.7.6          highr_0.9              ps_1.6.0              
+ [91] lattice_0.20-45        Matrix_1.4-1           vctrs_0.4.1           
+ [94] pillar_1.7.0           lifecycle_1.0.1        jquerylib_0.1.4       
+ [97] bitops_1.0-7           httpuv_1.6.5           R6_2.5.1              
+[100] promises_1.2.0.1       gridExtra_2.3          codetools_0.2-18      
+[103] MASS_7.3-56            assertthat_0.2.1       rprojroot_2.0.3       
+[106] withr_2.5.0            GenomeInfoDbData_1.2.6 hms_1.1.1             
+[109] grid_4.1.0             rmarkdown_2.13         git2r_0.30.1          
+[112] getPass_0.2-2          scatterplot3d_0.3-41   lubridate_1.8.0       </code></pre>
+<div class="alert alert-warning">
+<p>
+<strong>Warning:</strong> The above code chunk cached its results, but it won’t be re-run if previous chunks it depends on are updated. If you need to use caching, it is highly recommended to also set <code>knitr::opts_chunk$set(autodep = TRUE)</code> at the top of the file (in a chunk that is not cached). Alternatively, you can customize the option <code>dependson</code> for each individual chunk that is cached. Using either <code>autodep</code> or <code>dependson</code> will remove this warning. See the <a href="https://yihui.name/knitr/options/#cache"
+>knitr cache options</a> for more details.
+</p>
+</div>
+</div>
+</div>
+
+
+<!-- Adjust MathJax settings so that all math formulae are shown using
+TeX fonts only; see
+https://docs.mathjax.org/en/latest/web/configuration.html. This will make
+the presentation more consistent at the cost of the webpage sometimes
+taking slightly longer to load. Note that this only works because the
+footer is added to webpages before the MathJax javascript. -->
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    "HTML-CSS": { availableFonts: ["TeX"] }
+  });
+</script>
+
+
+
+
+</div>
+</div>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+
+<script>
+$(document).ready(function ()  {
+
+    // temporarily add toc-ignore selector to headers for the consistency with Pandoc
+    $('.unlisted.unnumbered').addClass('toc-ignore')
+
+    // move toc-ignore selectors from section div to header
+    $('div.section.toc-ignore')
+        .removeClass('toc-ignore')
+        .children('h1,h2,h3,h4,h5').addClass('toc-ignore');
+
+    // establish options
+    var options = {
+      selectors: "h1,h2,h3",
+      theme: "bootstrap3",
+      context: '.toc-content',
+      hashGenerator: function (text) {
+        return text.replace(/[.\\/?&!#<>]/g, '').replace(/\s/g, '_');
+      },
+      ignoreSelector: ".toc-ignore",
+      scrollTo: 0
+    };
+    options.showAndHide = true;
+    options.smoothScroll = true;
+
+    // tocify
+    var toc = $("#TOC").tocify(options).data("toc-tocify");
+});
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
