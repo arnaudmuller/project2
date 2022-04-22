@@ -1,0 +1,336 @@
+---
+title: "RNA-Seq significance analysis"
+subtitle: "220221_A01275_0052_AHT7L3DRXY"
+author: "Arnaud Muller"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:   
+  prettydoc::html_pretty:
+    theme: tactile
+    highlight: github
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning=FALSE)
+knitr::opts_chunk$set(message=FALSE)
+knitr::opts_chunk$set(cache=TRUE)
+knitr::opts_chunk$set(fig.width=16, fig.height=10) 
+#knitr::opts_chunk$set(dev='png',dev.args=list(type='cairo'))
+```
+
+
+```{r loadlib}
+suppressPackageStartupMessages(library("tidyverse"))
+suppressPackageStartupMessages(library("stringr"))
+suppressPackageStartupMessages(library("DESeq2"))
+suppressPackageStartupMessages(library("pheatmap"))
+suppressPackageStartupMessages(library("RColorBrewer"))
+suppressPackageStartupMessages(library(FactoMineR))
+suppressPackageStartupMessages(library(reshape2))
+suppressPackageStartupMessages(library("viridis"))
+suppressPackageStartupMessages(library("ggrepel"))
+suppressPackageStartupMessages(library(biomaRt))
+suppressPackageStartupMessages(library("DT"))
+suppressPackageStartupMessages(library(ggforce))
+suppressPackageStartupMessages(library(cowplot))
+suppressPackageStartupMessages(library(UpSetR))
+```
+
+# File import
+
+Initial data import stands in the following files:  
+
+- **all.tsv**: raw counts 
+- **sampleannotation.tsv**: metadata describing each sample, as seen below.
+
+```{r import}
+prefix <- "K:/arnaud/Projects/J_Phan_LIH/"
+prefix <- "./"
+
+SampleAnnotation <- read_tsv(paste0(prefix,"sampleannotation.tsv"))
+
+rawcounts <-  read_tsv(paste0(prefix,"all.tsv"))
+
+datatable(SampleAnnotation,
+          caption="Sample annotation", 
+          extensions = 'Buttons', 
+          options = list(dom = 'Bfrtip', buttons = list(I('colvis'),'copy', list(extend = 'collection',buttons = c('excel','csv','pdf'),text = 'Download')), autoWidth = F),rownames = FALSE)
+```
+
+```{r mart}
+ensembl = useMart(biomart="ensembl", dataset="hsapiens_gene_ensembl")
+
+genes <- rawcounts %>% pull(gene)
+
+GeneAnnotation<- getBM(attributes=c("ensembl_gene_id", "hgnc_symbol","gene_biotype"), filters = "ensembl_gene_id", values = genes, mart= ensembl)
+
+```
+
+# Distributions
+
+
+```{r sanitary}
+ddsrawcounts <- rawcounts %>% column_to_rownames("gene")
+ddssampleannotation <- SampleAnnotation %>% column_to_rownames("sample")
+ddsrawcounts <- ddsrawcounts[ , rownames(ddssampleannotation) ]
+dds <- DESeqDataSetFromMatrix(countData=ddsrawcounts[ , rownames(ddssampleannotation) ], 
+                              colData=ddssampleannotation, 
+                              design=~condition)
+
+dds <- dds[ rowSums(counts(dds)) > 10, ]
+
+# Bar plot of lib size
+colSums(assay(dds)) %>% as_tibble(rownames="sample") %>% 
+  left_join(SampleAnnotation) %>% 
+  ggplot()+
+  geom_col(aes(x=sample, y=value, fill=condition), show.legend = F)+ 
+  coord_flip()+ 
+  facet_wrap(~condition,scales = "free_y") +
+  theme_bw() +
+  labs(title = "Barplot of library sizes", y = "Total read counts")+
+  scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  theme(text = element_text(size = 16, face = "bold"))
+
+# Gene densities
+ggplot(data=log2(counts(dds) +1) %>% as_tibble(rownames= "gene") %>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation))+
+    geom_density(aes(count,color=sample, linetype=as.factor(time)),size=1.2)+
+    labs(title = "Densities of raw log2 counts", x = "log2 counts + 1") +
+    theme_bw() +
+    theme(legend.position="bottom", legend.box = "vertical")+guides(color="none")+
+    facet_wrap(~condition  ) +
+    theme(text = element_text(size = 16, face = "bold"))
+
+# Biotype plot
+counts(dds)[rowSums(counts(dds)) >=  1000,] %>% 
+    as_tibble(rownames= "gene") %>% 
+    pivot_longer(-gene, names_to = "sample", values_to = "count") %>% 
+    left_join(SampleAnnotation) %>% 
+    left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")) %>% mutate(gene_biotype=as_factor(gene_biotype)) %>% 
+    group_by(gene_biotype ) %>%
+    ggplot()+
+    geom_col(aes(x=sample, y=log2(count +1), fill=gene_biotype), position="fill")+
+    scale_fill_manual(values=c(RColorBrewer::brewer.pal(5,'Paired'), RColorBrewer::brewer.pal(8,'Dark2'), RColorBrewer::brewer.pal(8,'Accent')))+    
+    labs(x="Samples", y="Proportion of Biotype", fill="Biotype")+facet_wrap(~condition,scales = "free_y")+
+    theme_bw() +
+    coord_flip()+
+    theme(text = element_text(size = 16, face = "bold")) +
+    guides(fill=guide_legend(ncol=1))+
+    scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
+
+```
+
+# Clustering
+
+```{r heatmap}
+dds <- DESeq(dds)
+
+vsd <- vst(dds)
+
+sampleDistMatrix <- as.matrix(dist(t(assay(vsd))))
+
+annot_colors <- list(time=c("30"="#DEF5E5FF","60"="#357BA2FF","90"="#40498EFF"))
+
+pheatmap(sampleDistMatrix, 
+         annotation_col=SampleAnnotation %>% dplyr::select(sample, time, condition) %>% mutate(time=as_factor(time), condition=as_factor(condition)) %>% column_to_rownames("sample"), 
+         col=inferno(10), 
+         annotation_colors = annot_colors)
+```
+
+```{r pca}
+# calculate the variance for each gene
+rv <- rowVars(assay(vsd))
+# select the ntop genes by variance
+select <- order(rv, decreasing=TRUE)[seq_len(min(500, length(rv)))]
+pca <- prcomp(t(assay(vsd)[select,]))
+# the contribution to the total variance for each component
+percentVar <- pca$sdev^2 / sum( pca$sdev^2 )
+
+pca$x %>% as_tibble(rownames = "sample") %>% 
+  left_join(SampleAnnotation) %>% 
+  ggplot(aes(PC1, PC2, color=condition, shape=as.factor(time))) +geom_point(size = 4) +
+    labs(title = "PCA plot") + xlab("PC1 (53.1%)") + ylab("PC2 (23%)")+
+    theme_bw() +
+  theme(text = element_text(size = 16, face = "bold")) +
+    theme(legend.position="bottom", legend.box = "vertical")
+percentVar %>% as_tibble(rownames="PC")%>%
+    ggplot()+
+    geom_col(aes(x=fct_reorder(PC, -value), y=100 * value))+
+    theme_bw() +
+    theme(text = element_text(size = 16, face = "bold")) +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, NA)) +labs(title="variance explained by each PC",x="Principal Component", y="Percentage")
+
+# Plot all first 5 PCs
+ggplot(pca$x %>% as_tibble(rownames = "sample") %>%  left_join(SampleAnnotation) ) + 
+    geom_point(alpha = 0.9,  size = 3, aes(x = .panel_x, y = .panel_y, color=condition, shape=as.factor(time))) +  geom_autodensity(aes(x = .panel_x, y = .panel_y), fill="grey60", alpha=.8) +
+    facet_matrix(vars(PC1:PC5), layer.diag = 2, 
+                 grid.y.diag = FALSE)+labs(title = "PCA plot") +
+    theme_bw() +
+    theme(text = element_text(size = 16, face = "bold")) +
+    theme(legend.position="bottom", legend.box = "vertical")
+```
+
+# Results
+
+For each comparison, you can find the box plot of top20 significant genes and a volcano plot.  
+A table with *fold-change* and *adjusted pValue* is as well available for each comparison. 
+The comparisons of interest are the folowing:  
+
+
+```{r uberbasicmodel, cache=TRUE, cache.lazy = FALSE}
+SampleAnnotation <- SampleAnnotation %>% unite("condition_time", condition, time, remove=F)
+ddssampleannotation <- SampleAnnotation %>% column_to_rownames("sample")
+
+# coldata <- ddssampleannotation %>% filter(condition_time %in% c("PA_30", "PB_30"))%>% dplyr::select(condition_time)
+# countdata <- ddsrawcounts[,rownames(coldata)]
+# design <- model.matrix(~  condition_time, coldata )
+# dds <- DESeqDataSetFromMatrix(countData=countdata, 
+#                               colData=coldata, 
+#                               design= design)
+# res <- results(dds)
+
+fu_DESeq = function(key0,key1){
+  coldata <- ddssampleannotation %>% filter(condition_time %in% c(key0,key1))%>% dplyr::select(condition_time)
+  countdata <- ddsrawcounts[,rownames(coldata)]
+  design <- model.matrix(~  condition_time, coldata )
+  dds <- DESeqDataSetFromMatrix(countData=countdata, 
+                              colData=coldata, 
+                              design= design)
+  dds <- estimateSizeFactors(dds)
+
+  nc <- counts(dds, normalized=TRUE)
+  filter <- rowSums(nc >= 1) >= 5 # this is to filter at least 1 (normalized) counts in 5 samples
+  dds <- dds[filter,]
+
+  dds <- DESeq(dds)
+
+  #res <- results(dds)
+
+  return(dds)
+}
+
+
+comparisons <- tibble::tribble(
+                               ~group1, ~group2,
+                               "PA_30", "PB_30",
+                               "PA_60", "PB_60",
+                               "PA_90", "PB_90",
+                               "PA_30", "WTA_30",
+                               "PA_60", "WTA_60",
+                               "PA_90", "WTA_90",
+                               "PB_30", "WTB_30",
+                               "PB_60", "WTB_60",
+                               "PB_90", "WTB_90",
+                               "WTA_30", "WTB_30",
+                               "WTA_60", "WTB_60",
+                               "WTA_90", "WTB_90",
+                 )
+comparisons
+
+AllResults <- comparisons %>% #filter(group1 == "WTA_30") %>%
+  mutate(objDESeq=map2(group1, group2, ~fu_DESeq(.x, .y))) %>% 
+  mutate(resDESeq=map(objDESeq, ~results(.x)%>% as_tibble(rownames = "gene"))) %>% 
+  mutate(resDESeq=map(resDESeq, ~arrange(.x, pvalue))) %>% # sort by significance
+  mutate(countsDESeq=map(objDESeq, ~counts(.x, normalized = T)%>% as_tibble(rownames = "gene"))) %>% 
+  mutate(plotbox=pmap(list(resDESeq, countsDESeq,group1,group2), ~ggplot(data=..2 %>% filter(gene %in% pull(top_n(..1,-20, padj), gene ))  %>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation) %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")), aes(x=condition_time, y=log2(count +1))) + 
+                        geom_boxplot(outlier.shape = NA, notch=F) + 
+                        geom_jitter(aes(color=as.factor(replicate)), width = 0.2, size=3.5)+
+                        facet_wrap(~hgnc_symbol, scales="free_y") +
+                        theme_bw() +
+                        theme(text = element_text(size = 16, face = "bold"), axis.text.x=element_text(angle=45,hjust=1))+
+                        theme(legend.position="bottom")+
+                        labs(subtitle=paste0(..4," versus ",..3), title = "Top 20 significant genes")
+  )) %>% 
+  mutate(plotvolcano=pmap(list(resDESeq,group1,group2), ~ggplot(data=..1 %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")), aes(x=log2FoldChange, y=-log10(padj), label=hgnc_symbol)) +
+                            geom_point() + 
+                            theme_minimal() +
+                            theme(text = element_text(size = 16, face = "bold"))+
+                            geom_text_repel(data=. %>% top_n(-20, padj)) +
+                            #scale_color_manual(values=c("blue", "black", "red")) +
+                            geom_vline(xintercept=c(-0.6, 0.6), col="red", linetype="dashed") +
+                            geom_hline(yintercept=-log10(0.05), col="red")+
+                            labs(subtitle=paste0(..3," versus ",..2), title = "Volcano plot")
+  )) %>% 
+  mutate(plotall=map2(plotbox, plotvolcano, ~plot_grid(.x,.y, ncol = 2)))
+```
+
+```{r plotresults}
+AllResults$plotall 
+```
+
+The number od significant genes (adjPval < 0.01) per comparison is the following:  
+
+```{r export}
+# Number SDE genes for each group
+AllResults %>% dplyr::select(group1, group2,resDESeq) %>% unite("group1_group2",group1,group2) %>% unnest(resDESeq) %>% group_by(group1_group2) %>% filter(padj<0.01) %>%  summarise(n = n())
+
+AllResults%>% dplyr::select(group1, group2,resDESeq) %>% unite("group1_group2",group1,group2, sep="_versus_") %>% unnest(resDESeq) %>% filter(padj<0.01) %>% dplyr::select(group1_group2, padj, gene) %>% mutate(padj= case_when(!(is.na(padj)) ~ 1, TRUE ~ 0)) %>% pivot_wider(names_from = group1_group2, values_from = padj, values_fill = 0) %>% column_to_rownames("gene") %>% upset(., nsets = 12, number.angles = 30, point.size = 3.5, line.size = 2, mainbar.y.label = "Genre Intersections", sets.x.label = "SDE genes")
+
+# Export All results files
+#AllResults%>% #filter(group1 == "WTA_30") %>%
+#  unite(comparison, c(group1, group2), remove=F, sep="_versus_") %>% 
+#  mutate(walk2(resDESeq, comparison, ~write_tsv(.x, file=paste0(.y,".txt"))))
+  
+```
+
+```{r advancedmodel, eval=FALSE}
+coldata <- ddssampleannotation %>% filter(condition %in% c("PA", "WTA")) %>% dplyr::select(condition, time, replicate, condition_time) %>% mutate(condition=as_factor(condition), time=as_factor(time), replicate=as_factor(replicate)) %>% unite(id, c("condition_time","replicate"), remove=F) %>% dplyr::select(-condition_time)
+
+  countdata <- ddsrawcounts[,rownames(coldata)]
+  design <- model.matrix(~ condition + time + condition:time, coldata )
+  ddsTC <- DESeqDataSetFromMatrix(countData=countdata, 
+                              colData=coldata, 
+                              design= design)
+  ddsTC <- estimateSizeFactors(ddsTC)
+
+  nc <- counts(ddsTC, normalized=TRUE)
+  filter <- rowSums(nc >= 1) >= 5 # this is to filter at least 1 (normalized) counts in 5 samples
+  ddsTC <- ddsTC[filter,]
+
+  #ddsTC <- DESeq(ddsTC)
+ddsTC <- DESeqDataSet(ddsTC, ~ condition + time + condition:time)
+  ddsTC <- DESeq(ddsTC, test="LRT", reduced = ~ condition + time)
+resTC <- results(ddsTC)
+
+top <- plotCounts(ddsTC, which.min(resTC$padj), intgroup = c("time","condition"), returnData = TRUE)
+top$time <- as.numeric(as.character(top$time))
+ggplot(top,
+  aes(x = time, y = count, color = condition, group = condition)) + 
+  geom_point() + stat_summary(fun.y=mean, geom="line") +
+  scale_y_log10()
+
+
+res30 <- results(ddsTC, name="conditionWTA.time60", test="Wald")
+res30[which.min(resTC$padj),]
+betas <- coef(ddsTC)
+colnames(betas)
+
+topGenes <- head(order(resTC$padj),20)
+mat <- betas[topGenes, -c(1,2)]
+thr <- 3 
+mat[mat < -thr] <- -thr
+mat[mat > thr] <- thr
+pheatmap(mat, breaks=seq(from=-thr, to=thr, length=101),
+         cluster_col=FALSE)
+
+top20 <- resTC %>%as_tibble(rownames = "gene") %>% filter(padj<0.01) %>% top_n(-20, padj) %>% pull(gene)
+counts(ddsTC, normalized = T) %>% as_tibble(rownames = "gene")%>% filter(gene %in% top20)%>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation) %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")) %>% 
+  ggplot(aes(x=time, y=log2(count +1), color = condition, group = condition)) +geom_point() + stat_summary(fun.y=mean, geom="line") +
+facet_wrap(~hgnc_symbol, scales="free_y")
+
+
+mutate(plotbox=pmap(list(resDESeq, countsDESeq,group1,group2), ~ggplot(data=..2 %>% filter(gene %in% pull(top_n(..1,-20, padj), gene ))  %>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation) %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")), aes(x=condition_time, y=log2(count +1))) + 
+                        geom_boxplot(outlier.shape = NA, notch=F) + 
+                        geom_jitter(aes(color=as.factor(replicate)), width = 0.2, size=3.5)+
+                        facet_wrap(~hgnc_symbol, scales="free_y") +
+                        theme_bw() +
+                        theme(text = element_text(size = 16, face = "bold"), axis.text.x=element_text(angle=45,hjust=1))+
+                        theme(legend.position="bottom")+
+                        labs(subtitle=paste0(..4," versus ",..3), title = "Top 20 significant genes")
+  ))
+```
+# Session info
+
+```{r sessioninfo, echo = TRUE,message=TRUE,warning=FALSE,cache=TRUE}
+sessionInfo()
+```
