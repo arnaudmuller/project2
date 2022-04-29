@@ -35,6 +35,10 @@ suppressPackageStartupMessages(library("DT"))
 suppressPackageStartupMessages(library(ggforce))
 suppressPackageStartupMessages(library(cowplot))
 suppressPackageStartupMessages(library(UpSetR))
+suppressPackageStartupMessages(library("sknifedatar"))
+suppressPackageStartupMessages(library("xaringanExtra"))
+suppressPackageStartupMessages(library("ggplotify")) 
+suppressPackageStartupMessages(library(DEGreport))
 ```
 
 # File import
@@ -46,7 +50,7 @@ Initial data import stands in the following files:
 
 ```{r import}
 prefix <- "K:/arnaud/Projects/J_Phan_LIH/"
-prefix <- "./"
+#prefix <- "./"
 
 SampleAnnotation <- read_tsv(paste0(prefix,"sampleannotation.tsv"))
 
@@ -251,14 +255,29 @@ AllResults <- comparisons %>% #filter(group1 == "WTA_30") %>%
                             geom_hline(yintercept=-log10(0.05), col="red")+
                             labs(subtitle=paste0(..3," versus ",..2), title = "Volcano plot")
   )) %>% 
-  mutate(plotall=map2(plotbox, plotvolcano, ~plot_grid(.x,.y, ncol = 2)))
+  mutate(heatmap=pmap(list(resDESeq, objDESeq,group1,group2), ~pheatmap(..2 %>% vst() %>% assay() %>% as_tibble(rownames = "gene") %>% filter(gene %in% pull(top_n(..1,-20, padj), gene )) %>% column_to_rownames("gene"), show_rownames=FALSE, scale = "row", silent=T ))) %>% 
+  mutate(plotall=pmap(list(plotbox, plotvolcano, heatmap), ~ggdraw() +
+    draw_plot(..1, 0, 0, 0.5, 1) +
+    draw_plot(..2, 0.5, 0.5, .5, .5) +
+    draw_plot(as.ggplot(..3), 0.5, 0, 0.5, .5) +
+    draw_plot_label(c("A", "B", "C"), c(0, 0.5, 0.5), c(1, 1, 0.5), size = 15)))
+  #mutate(plotall=map2(plotbox, plotvolcano, ~plot_grid(.x,.y, ncol = 2)))
+
+
 ```
 
 ```{r plotresults}
-AllResults$plotall 
+#AllResults$plotall 
 ```
 
-The number od significant genes (adjPval < 0.01) per comparison is the following:  
+```{r panelset}
+xaringanExtra::use_panelset()
+AllResults <- AllResults %>% mutate(comparison=paste0(group1,"vs",group2))
+```
+
+`r library(sknifedatar); automagic_tabs(input_data = AllResults, panel_name = "comparison", .output = "plotall")`
+
+The number of significant genes (adjPval < 0.01) per comparison is the following:  
 
 ```{r export}
 # Number SDE genes for each group
@@ -273,61 +292,148 @@ AllResults%>% dplyr::select(group1, group2,resDESeq) %>% unite("group1_group2",g
   
 ```
 
-```{r advancedmodel, eval=FALSE}
-coldata <- ddssampleannotation %>% filter(condition %in% c("PA", "WTA")) %>% dplyr::select(condition, time, replicate, condition_time) %>% mutate(condition=as_factor(condition), time=as_factor(time), replicate=as_factor(replicate)) %>% unite(id, c("condition_time","replicate"), remove=F) %>% dplyr::select(-condition_time)
+# Advanced model
 
-  countdata <- ddsrawcounts[,rownames(coldata)]
-  design <- model.matrix(~ condition + time + condition:time, coldata )
-  ddsTC <- DESeqDataSetFromMatrix(countData=countdata, 
-                              colData=coldata, 
-                              design= design)
-  ddsTC <- estimateSizeFactors(ddsTC)
+Here we propose to adjust the model in order to fit better with the experimental design:  
+  
+This is the design considered: `~ condition + time + condition:time, coldata`  
+either for PA + WTA samples and for PB + WTB samples.
 
-  nc <- counts(ddsTC, normalized=TRUE)
-  filter <- rowSums(nc >= 1) >= 5 # this is to filter at least 1 (normalized) counts in 5 samples
-  ddsTC <- ddsTC[filter,]
+## PA and WTA samples
 
-  #ddsTC <- DESeq(ddsTC)
-ddsTC <- DESeqDataSet(ddsTC, ~ condition + time + condition:time)
-  ddsTC <- DESeq(ddsTC, test="LRT", reduced = ~ condition + time)
-resTC <- results(ddsTC)
+```{r advancedmodel, eval=TRUE}
+coldata <-
+  ddssampleannotation %>% filter(condition %in% c("PA", "WTA")) %>% dplyr::select(condition, time, replicate, condition_time) %>% mutate(
+    condition = as_factor(condition),
+    time = as_factor(time),
+    replicate = as_factor(replicate)
+  ) %>% unite(id, c("condition_time", "replicate"), remove = F) %>% dplyr::select(-condition_time)
 
-top <- plotCounts(ddsTC, which.min(resTC$padj), intgroup = c("time","condition"), returnData = TRUE)
-top$time <- as.numeric(as.character(top$time))
-ggplot(top,
-  aes(x = time, y = count, color = condition, group = condition)) + 
-  geom_point() + stat_summary(fun.y=mean, geom="line") +
-  scale_y_log10()
+countdata <- ddsrawcounts[, rownames(coldata)]
+design <- model.matrix( ~ condition + time + condition:time, coldata)
+ddsTCA <- DESeqDataSetFromMatrix(countData = countdata,
+                                colData = coldata,
+                                design = design)
+ddsTCA <- estimateSizeFactors(ddsTCA)
+
+nc <- counts(ddsTCA, normalized = TRUE)
+filter <-
+  rowSums(nc >= 1) >= 5 # this is to filter at least 1 (normalized) counts in 5 samples
+ddsTCA <- ddsTCA[filter, ]
+
+#ddsTCA <- DESeq(ddsTCA)
+ddsTCA <- DESeqDataSet(ddsTCA, ~ condition + time + condition:time)
+ddsTCA <- DESeq(ddsTCA, test = "LRT", reduced = ~ condition + time)
+resTCA <- results(ddsTCA)
+
+# top <- plotCounts(ddsTCA, which.min(resTCA$padj), intgroup = c("time","condition"), returnData = TRUE)
+# top$time <- as.numeric(as.character(top$time))
+# ggplot(top,
+#   aes(x = time, y = count, color = condition, group = condition)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
 
 
-res30 <- results(ddsTC, name="conditionWTA.time60", test="Wald")
-res30[which.min(resTC$padj),]
-betas <- coef(ddsTC)
-colnames(betas)
+res30 <- results(ddsTCA, name="conditionWTA.time60", test="Wald")
+res30[which.min(resTCA$padj),]
+betas <- coef(ddsTCA)
+#colnames(betas)
 
-topGenes <- head(order(resTC$padj),20)
+topGenes <- head(order(resTCA$padj),20)
 mat <- betas[topGenes, -c(1,2)]
 thr <- 3 
 mat[mat < -thr] <- -thr
 mat[mat > thr] <- thr
-pheatmap(mat, breaks=seq(from=-thr, to=thr, length=101),
-         cluster_col=FALSE)
+#pheatmap(mat, breaks=seq(from=-thr, to=thr, length=101), cluster_col=FALSE)
 
-top20 <- resTC %>%as_tibble(rownames = "gene") %>% filter(padj<0.01) %>% top_n(-20, padj) %>% pull(gene)
-counts(ddsTC, normalized = T) %>% as_tibble(rownames = "gene")%>% filter(gene %in% top20)%>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation) %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")) %>% 
-  ggplot(aes(x=time, y=log2(count +1), color = condition, group = condition)) +geom_point() + stat_summary(fun.y=mean, geom="line") +
-facet_wrap(~hgnc_symbol, scales="free_y")
+top20 <- resTCA %>%as_tibble(rownames = "gene") %>% filter(padj<0.01) %>% top_n(-20, padj) %>% pull(gene)
+counts(ddsTCA, normalized = T) %>% as_tibble(rownames = "gene")%>% filter(gene %in% top20)%>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation) %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")) %>% 
+  ggplot(aes(x=time, y=log2(count +1), color = condition, group = condition)) +geom_point() + stat_summary(fun.y=mean, geom="line", size=1.5) +
+facet_wrap(~hgnc_symbol, scales="free_y") +
+  theme_bw() +theme(text = element_text(size = 16, face = "bold")) +theme(legend.position="bottom")+labs(title = "Top 20 significant genes")
+
+# phdata <- counts(ddsTC, normalized = T) %>% as_tibble(rownames = "gene")%>% filter(gene %in% top20)%>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation) %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")) %>% dplyr::select(hgnc_symbol, sample, count) %>% pivot_wider(names_from = sample, values_from = count) %>% column_to_rownames("hgnc_symbol") %>% as.matrix()
+# pheatmap(log2(phdata +1), 
+#          annotation_col=SampleAnnotation %>% dplyr::select(sample, time, condition) %>% mutate(time=as_factor(time), condition=as_factor(condition)) %>% column_to_rownames("sample"), 
+#          col=inferno(10), 
+#          annotation_colors = annot_colors)
+
+```
+
+## PB and WTB samples
+
+```{r advancedmodelB}
+coldata <- ddssampleannotation %>% filter(condition %in% c("PB", "WTB")) %>% dplyr::select(condition, time, replicate, condition_time) %>% mutate(condition=as_factor(condition), time=as_factor(time), replicate=as_factor(replicate)) %>% unite(id, c("condition_time","replicate"), remove=F) %>% dplyr::select(-condition_time)
+
+countdata <- ddsrawcounts[,rownames(coldata)]
+design <- model.matrix(~ condition + time + condition:time, coldata )
+ddsTCB <- DESeqDataSetFromMatrix(countData=countdata, 
+                            colData=coldata, 
+                            design= design)
+ddsTCB <- estimateSizeFactors(ddsTCB)
+
+nc <- counts(ddsTCB, normalized=TRUE)
+filter <- rowSums(nc >= 1) >= 5 # this is to filter at least 1 (normalized) counts in 5 samples
+ddsTCB <- ddsTCB[filter,]
+  #ddsTC <- DESeq(ddsTC)
+ddsTCB <- DESeqDataSet(ddsTCB, ~ condition + time + condition:time)
+ddsTCB <- DESeq(ddsTCB, test="LRT", reduced = ~ condition + time)
+resTCB <- results(ddsTCB)
+
+# top <- plotCounts(ddsTC, which.min(resTC$padj), intgroup = c("time","condition"), returnData = TRUE)
+# top$time <- as.numeric(as.character(top$time))
+# ggplot(top,
+#   aes(x = time, y = count, color = condition, group = condition)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
 
 
-mutate(plotbox=pmap(list(resDESeq, countsDESeq,group1,group2), ~ggplot(data=..2 %>% filter(gene %in% pull(top_n(..1,-20, padj), gene ))  %>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation) %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")), aes(x=condition_time, y=log2(count +1))) + 
-                        geom_boxplot(outlier.shape = NA, notch=F) + 
-                        geom_jitter(aes(color=as.factor(replicate)), width = 0.2, size=3.5)+
-                        facet_wrap(~hgnc_symbol, scales="free_y") +
-                        theme_bw() +
-                        theme(text = element_text(size = 16, face = "bold"), axis.text.x=element_text(angle=45,hjust=1))+
-                        theme(legend.position="bottom")+
-                        labs(subtitle=paste0(..4," versus ",..3), title = "Top 20 significant genes")
-  ))
+res30B <- results(ddsTCB, name="conditionWTB.time60", test="Wald")
+res30B[which.min(resTCB$padj),]
+betas <- coef(ddsTCB)
+#colnames(betas)
+
+topGenes <- head(order(resTCB$padj),20)
+mat <- betas[topGenes, -c(1,2)]
+thr <- 3 
+mat[mat < -thr] <- -thr
+mat[mat > thr] <- thr
+#pheatmap(mat, breaks=seq(from=-thr, to=thr, length=101), cluster_col=FALSE)
+
+top20 <- resTCB %>%as_tibble(rownames = "gene") %>% filter(padj<0.01) %>% top_n(-20, padj) %>% pull(gene)
+counts(ddsTCB, normalized = T) %>% as_tibble(rownames = "gene")%>% filter(gene %in% top20)%>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation) %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")) %>% 
+  ggplot(aes(x=time, y=log2(count +1), color = condition, group = condition)) +geom_point() + stat_summary(fun.y=mean, geom="line", size=1.5) +
+facet_wrap(~hgnc_symbol, scales="free_y") +
+  theme_bw() +theme(text = element_text(size = 16, face = "bold")) +theme(legend.position="bottom")+labs(title = "Top 20 significant genes")
+```
+
+# Profile analysis
+
+Among the results obtained using the advanced model, several genes share the same expression profile among time.  
+These defferent generic profiles can be clustered together.
+
+## PB and WTB samples
+
+```{r profileA}
+ma = assay(rlog(ddsTCA))[row.names(resTCA)[1:1000],]
+design <- as.data.frame(colData(ddsTCA))
+resPatternA <- degPatterns(ma, design, time = "time")
+
+
+# phdata <- counts(ddsTC, normalized = T) %>% as_tibble(rownames = "gene")%>% filter(gene %in% top20)%>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation) %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")) %>% dplyr::select(hgnc_symbol, sample, count) %>% pivot_wider(names_from = sample, values_from = count) %>% column_to_rownames("hgnc_symbol") %>% as.matrix()
+# pheatmap(log2(phdata +1), 
+#          annotation_col=SampleAnnotation %>% dplyr::select(sample, time, condition) %>% mutate(time=as_factor(time), condition=as_factor(condition)) %>% column_to_rownames("sample"), 
+#          col=inferno(10), 
+#          annotation_colors = annot_colors)
+
+```
+
+## PB and WTB samples
+
+```{r profileB}
+ma = assay(rlog(ddsTCB))[row.names(resTCB)[1:1000],]
+design <- as.data.frame(colData(ddsTCB))
+resPatternB <- degPatterns(ma, design, time = "time")
 ```
 # Session info
 
