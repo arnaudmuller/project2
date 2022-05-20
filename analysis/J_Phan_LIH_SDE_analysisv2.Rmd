@@ -39,6 +39,7 @@ suppressPackageStartupMessages(library("sknifedatar"))
 suppressPackageStartupMessages(library("xaringanExtra"))
 suppressPackageStartupMessages(library("ggplotify")) 
 suppressPackageStartupMessages(library(DEGreport))
+suppressPackageStartupMessages(library("ComplexHeatmap"))
 ```
 
 # File import
@@ -291,6 +292,48 @@ AllResults%>% dplyr::select(group1, group2,resDESeq) %>% unite("group1_group2",g
 #  mutate(walk2(resDESeq, comparison, ~write_tsv(.x, file=paste0(.y,".txt"))))
   
 ```
+Here are the global comparisons (all time points merged together).  
+
+```{r allTP}
+# Patient A
+coldata <- ddssampleannotation %>% filter(patient %in% c("A"))%>% dplyr::select(condition)
+countdata <- ddsrawcounts[,rownames(coldata)]
+design <- model.matrix(~  condition, coldata )
+dds <- DESeqDataSetFromMatrix(countData=countdata, 
+                              colData=coldata, 
+                              design= design)
+dds <- estimateSizeFactors(dds)
+
+nc <- counts(dds, normalized=TRUE)
+filter <- rowSums(nc >= 1) >= 5 # this is to filter at least 1 (normalized) counts in 5 samples
+dds <- dds[filter,]
+
+dds <- DESeq(dds)
+
+resAllA <- results(dds)
+resAllA <- resAllA%>% as_tibble(rownames = "gene") %>% arrange( pvalue)
+write_tsv(resAllA, file="./PA_All_versus_WTA_All.txt")
+
+# Patient B
+coldata <- ddssampleannotation %>% filter(patient %in% c("B"))%>% dplyr::select(condition)
+countdata <- ddsrawcounts[,rownames(coldata)]
+design <- model.matrix(~  condition, coldata )
+dds <- DESeqDataSetFromMatrix(countData=countdata, 
+                              colData=coldata, 
+                              design= design)
+dds <- estimateSizeFactors(dds)
+
+nc <- counts(dds, normalized=TRUE)
+filter <- rowSums(nc >= 1) >= 5 # this is to filter at least 1 (normalized) counts in 5 samples
+dds <- dds[filter,]
+
+dds <- DESeq(dds)
+
+resAllB <- results(dds)
+resAllB <- resAllB%>% as_tibble(rownames = "gene") %>% arrange( pvalue)
+write_tsv(resAllB, file="./PB_All_versus_WTB_All.txt")
+
+```
 
 # Advanced model
 
@@ -415,10 +458,16 @@ These defferent generic profiles can be clustered together.
 ## PB and WTB samples
 
 ```{r profileA}
-ma = assay(rlog(ddsTCA))[row.names(resTCA)[1:1000],]
+ma = assay(rlog(ddsTCA))[resTCA %>% as_tibble(rownames = "gene") %>% filter(padj<0.01) %>% pull(gene),]
 design <- as.data.frame(colData(ddsTCA))
-resPatternA <- degPatterns(ma, design, time = "time")
+resPatternA <- degPatterns(ma, design, time = "time", col="condition")
 
+ggplot(resPatternA[["normalized"]],
+       aes(time, value, color = condition)) +
+    geom_boxplot() +
+    geom_point(position = position_jitterdodge(dodge.width = 0.9)) +
+    # change the method to make it smoother
+    geom_smooth(aes(group=condition), method = "loess")+facet_wrap(~cluster)
 
 # phdata <- counts(ddsTC, normalized = T) %>% as_tibble(rownames = "gene")%>% filter(gene %in% top20)%>% pivot_longer(-gene, names_to = "sample", values_to = "count") %>% left_join(SampleAnnotation) %>% left_join(GeneAnnotation, by=c("gene"="ensembl_gene_id")) %>% dplyr::select(hgnc_symbol, sample, count) %>% pivot_wider(names_from = sample, values_from = count) %>% column_to_rownames("hgnc_symbol") %>% as.matrix()
 # pheatmap(log2(phdata +1), 
@@ -431,10 +480,26 @@ resPatternA <- degPatterns(ma, design, time = "time")
 ## PB and WTB samples
 
 ```{r profileB}
-ma = assay(rlog(ddsTCB))[row.names(resTCB)[1:1000],]
+ma = assay(rlog(ddsTCB))[resTCB %>% as_tibble(rownames = "gene") %>% filter(padj<0.01) %>% pull(gene),]
 design <- as.data.frame(colData(ddsTCB))
-resPatternB <- degPatterns(ma, design, time = "time")
+resPatternB <- degPatterns(ma, design, time = "time", col="condition")
 ```
+
+```{r complexheatmap}
+hmdataA <- t(scale(t(ma)))
+ myCol <- colorRampPalette(c('dodgerblue', 'black', 'yellow'))(100)
+  myBreaks <- seq(-3, 3, length.out = 100)
+  
+column_ha = HeatmapAnnotation(time= colnames(hmdataA) %>% as_tibble() %>% dplyr::select("sample" = value) %>% left_join(SampleAnnotation) %>% pull(time))
+
+#Heatmap(hmdataA, name = "mat", top_annotation = column_ha)
+order <- colnames(hmdataA) %>% as_tibble() %>% dplyr::select("sample" = value) %>% left_join(SampleAnnotation) %>% pull(sample)
+#order <- rep(c(rep(c("30"), 5),c(rep(c("60"), 5) ),c(rep(c("90"), 5) )),2)
+
+#Heatmap(hmdataA, name = "mat", top_annotation = column_ha, column_order = order, row_km = 6)
+Heatmap(hmdataA, name = "mat", top_annotation = column_ha, column_order = order, row_km = 4, column_split =rep(c(rep(c("30"), 5),c(rep(c("60"), 5) ),c(rep(c("90"), 5) )),2), show_row_names=F)
+```
+
 # Session info
 
 ```{r sessioninfo, echo = TRUE,message=TRUE,warning=FALSE,cache=TRUE}
